@@ -1,35 +1,39 @@
-# linux with folders like /app /lib /usr
-# FROM node:19.2-alpine
-
-# with a specific platform
-# FROM --platform=linux/amd64 node:19.2-alpine
-
-# with all platforms using docker buildx build --platform linux/amd64,linux/arm64, etc.
-# FROM --platform=$BUILDPLATFORM node:19.2-alpine3.17
-# Or
-# docker buildx build --platform linux/amd64,linux/arm64, etc.
-FROM node:19.2-alpine3.17
-
+# stage 1: deps: dev dependencies
+FROM node:19.2-alpine3.17 as deps
 # cd /app
 WORKDIR /app
-
+# dest /app
 COPY package.json ./
-
-# RUN ==> Run commands at building time
 # install dependencies
 RUN npm install
 
+# =========================================
+
+# stage 2: builder: build and tests
+FROM node:19.2-alpine3.17 as builder
+WORKDIR /app
+# pull and copy node_modules from stage named dependencies to /app/node_modules
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-
-# run tests
 RUN npm run test
+# for nestjs an others
+# RUN npm run build
 
-# remove unnecessary files and directories in PROD
-RUN rm -rf tests && rm -rf node_modules
+# =========================================
 
-# install dependencies only for production
+# stage 3: prod-deps: production dependencies
+FROM node:19.2-alpine3.17 as prod-deps
+WORKDIR /app
+COPY package.json ./
 RUN npm install --prod
 
-# Run commands at running time
+# =========================================
+
+# stage 4: runner: run app
+FROM node:19.2-alpine3.17 as runner
+WORKDIR /app
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY app.js ./
+COPY tasks ./tasks
 CMD [ "node", "app.js" ]
 
